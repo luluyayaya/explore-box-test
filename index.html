@@ -166,22 +166,23 @@ body {
 .action-bar { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 14px; }
 .action-bar .btn { text-align: center; padding: 9px 8px; font-size: 12px; }
 
-/* ── 城市切换 ── */
-.city-row {
-  display: flex; gap: 7px; overflow-x: auto;
-  padding-bottom: 4px; margin-bottom: 14px;
-  scrollbar-width: none;
+/* ── 城市下拉 ── */
+.city-select {
+  flex-shrink: 0; appearance: none; -webkit-appearance: none;
+  background: var(--bg3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M0 0l4.5 5L9 0z' fill='%23999'/%3E%3C/svg%3E") no-repeat right 10px center;
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 5px 26px 5px 12px; font-family: 'ZCOOL KuaiLe', cursive;
+  font-size: 13px; color: var(--ink2); cursor: pointer; outline: none;
+  transition: border-color 0.18s, color 0.18s;
+  box-shadow: 0 1px 4px var(--shadow2);
 }
-.city-row::-webkit-scrollbar { display: none; }
-.city-chip {
-  flex-shrink: 0;
-  padding: 5px 16px; border: 1px solid var(--border);
-  border-radius: 20px; font-size: 14px; cursor: pointer;
-  color: var(--faded); background: var(--bg3);
-  font-family: 'ZCOOL KuaiLe', cursive;
-  transition: all 0.18s; white-space: nowrap; letter-spacing: 0.5px;
-}
-.city-chip:hover { color: var(--ink); border-color: var(--border2); }
+.city-select:focus { border-color: var(--purple); }
+
+/* filter-bar = chips + city select 并排 */
+.filter-bar { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 14px; }
+.filter-chips-row { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+
+/* ── legacy (kept for compat) ── */
 .city-chip.active {
   background: var(--ink); color: var(--bg);
   border-color: var(--ink);
@@ -660,8 +661,6 @@ body {
       <button class="btn btn-data" onclick="openDataModal()">⇅ 数据</button>
     </div>
 
-    <!-- 城市切换 -->
-    <div class="city-row" id="city-row" style="display:none;"></div>
 
     <div class="tab-row">
       <button class="tab-btn active" id="tab-pending" onclick="setTab('pending')">待探索 <span class="tab-count" id="tc-pending">0</span></button>
@@ -675,15 +674,17 @@ body {
         <input class="search-input" type="text" placeholder="搜索地名、地址、关键词…" id="search-input" oninput="renderList()">
         <button class="btn-scan-fab" onclick="openScanModal()" title="截图识别">⊙</button>
       </div>
-      <div class="filter-row">
-        <button class="filter-chip active" data-cat="全部" onclick="setFilter('全部',this)">全部</button>
-        <button class="filter-chip" data-cat="觅食" onclick="setFilter('觅食',this)">觅食</button>
-        <button class="filter-chip" data-cat="发呆" onclick="setFilter('发呆',this)">发呆</button>
-        <button class="filter-chip" data-cat="逛逛" onclick="setFilter('逛逛',this)">逛逛</button>
-        <button class="filter-chip" data-cat="出走" onclick="setFilter('出走',this)">出走</button>
-        <button class="filter-chip" data-cat="其他" onclick="setFilter('其他',this)">其他</button>
+      <div class="filter-bar">
+        <div class="filter-chips-row">
+          <button class="filter-chip active" data-cat="全部" onclick="setFilter('全部',this)">全部</button>
+          <button class="filter-chip" data-cat="觅食" onclick="setFilter('觅食',this)">觅食</button>
+          <button class="filter-chip" data-cat="发呆" onclick="setFilter('发呆',this)">发呆</button>
+          <button class="filter-chip" data-cat="逛逛" onclick="setFilter('逛逛',this)">逛逛</button>
+          <button class="filter-chip" data-cat="出走" onclick="setFilter('出走',this)">出走</button>
+          <button class="filter-chip" data-cat="其他" onclick="setFilter('其他',this)">其他</button>
+        </div>
+        <select class="city-select" id="city-select" onchange="setCity(this.value)" style="display:none;"></select>
       </div>
-      <div class="deco-divider"><span class="deco-center" style="color:var(--gold2);opacity:0.7;">· ✦ ·</span></div>
       <div class="stats-row" id="stats-row"></div>
 <div class="places-grid" id="places-grid"></div>
     </div>
@@ -870,13 +871,12 @@ function getCities(){
 
 function renderCityRow(){
   const cities = getCities();
-  const row = document.getElementById('city-row');
-  const dl = document.getElementById('city-datalist');
-  if(dl) dl.innerHTML = cities.filter(c => c !== '全部').map(c => `<option value="${escAttr(c)}">`).join('');
-  if(places.length === 0){ row.style.display = 'none'; return; }
-  row.style.display = 'flex';
-  row.innerHTML = cities.map(c =>
-    `<button class="city-chip${activeCity===c?' active':''}" data-city="${escAttr(c)}" onclick="setCity(this.dataset.city)">${esc(c)}</button>`
+  const sel = document.getElementById('city-select');
+  if(!sel) return;
+  if(cities.length <= 2){ sel.style.display='none'; return; } /* 只有1个城市不显示 */
+  sel.style.display='';
+  sel.innerHTML = cities.map(c =>
+    `<option value="${escAttr(c)}"${activeCity===c?' selected':''}>${esc(c==='全部'?'全部城市':c)}</option>`
   ).join('');
 }
 
@@ -1216,9 +1216,7 @@ function renderList(){
   document.getElementById('tc-visited').textContent=vis.length;
   document.getElementById('header-count').textContent=pend.length;
   document.getElementById('stats-row').innerHTML=
-    '<span><span class="stat-dot" style="background:rgba(109,74,98,0.7)"></span>待探索 '+pend.length+'</span>'+
-    '<span><span class="stat-dot" style="background:rgba(200,168,122,0.85)"></span>已打卡 '+vis.length+'</span>'+
-    '<span><span class="stat-dot" style="background:rgba(46,26,38,0.22)"></span>共收藏 '+sp.length+'</span>';
+    '<span><span class="stat-dot" style="background:rgba(46,26,38,0.22)"></span>共收藏 '+sp.length+' 处</span>';
   const filtered=sp.filter(p=>{
     if(currentTab==='pending'&&p.visited) return false;
     if(currentTab==='visited'&&!p.visited) return false;
@@ -1258,7 +1256,7 @@ function renderList(){
         '<div class="place-header-row">'+cityTag+'<div class="place-name">'+esc(p.name)+'</div></div>'+
         ah+hh+
         (p.note?'<div class="place-note">'+esc(p.note)+'</div>':'')+
-        '<div class="place-tags"><span class="tag-pill">'+p.cat+'</span></div>'+ch+
+        ch+
       '</div>'+
       '<div class="place-actions">'+
         '<button class="icon-btn '+(p.priority?'fav':'')+'" onclick="togglePriority(\''+p.id+'\')" title="'+(p.priority?'取消置顶':'标为优先')+'">'+(p.priority?'♥':'♡')+'</button>'+
