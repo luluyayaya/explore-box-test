@@ -1475,11 +1475,27 @@ function toggleSyncPanel(){
   const open=panel.classList.toggle('open');
   if(chevron) chevron.classList.toggle('open',open);
 }
-function saveSyncConfig(){
+async function saveSyncConfig(){
   const token=(document.getElementById('sync-token').value||'').trim();
   const gistId=(document.getElementById('sync-gist-id').value||'').trim();
-  localStorage.setItem(SYNC_KEY,JSON.stringify({token,gistId}));
-  setSyncStatus('设置已保存 ✓','ok');
+  if(!token||!gistId){ setSyncStatus('Token 和 Gist ID 不能为空','error'); return; }
+  setSyncStatus('验证中…','');
+  /* 通过 API 获取用户名，一并存储，供拉取时拼 raw URL */
+  try{
+    const r=await fetch('https://api.github.com/user',{
+      headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'}
+    });
+    if(!r.ok) throw new Error(`Token 无效（${r.status}）`);
+    const u=await r.json();
+    localStorage.setItem(SYNC_KEY,JSON.stringify({token,gistId,username:u.login}));
+    setSyncStatus(`设置已保存 ✓（${u.login}）`,'ok');
+    loadSyncUI();
+  }catch(e){
+    /* 离线/代理不通时仍允许保存，但不存 username */
+    localStorage.setItem(SYNC_KEY,JSON.stringify({token,gistId}));
+    setSyncStatus('已保存（未能验证 Token：'+e.message+'）','ok');
+    loadSyncUI();
+  }
 }
 function setSyncStatus(msg,type){
   const el=document.getElementById('sync-status'); if(!el) return;
@@ -1488,8 +1504,23 @@ function setSyncStatus(msg,type){
 }
 async function pullFromGist(){
   const cfg=getSyncCfg();
-  if(!cfg.token||!cfg.gistId){ setSyncStatus('请先填写并保存 Token 和 Gist ID','error'); return; }
+  if(!cfg.gistId){ setSyncStatus('请先配置 Gist ID','error'); return; }
   setSyncStatus('拉取中…','');
+  /* 优先走 raw CDN URL（不需要代理，PWA/手机直连可用） */
+  if(cfg.username){
+    try{
+      const raw=`https://gist.githubusercontent.com/${cfg.username}/${cfg.gistId}/raw/explore-box.json?t=${Date.now()}`;
+      const res=await fetch(raw);
+      if(res.ok){
+        places=JSON.parse(await res.text());
+        save(); renderCityRow(); renderList();
+        setSyncStatus('已从云端同步 ✓ · '+new Date().toLocaleTimeString(),'ok');
+        return;
+      }
+    }catch(e){}
+  }
+  /* 回退：走 GitHub API（需代理） */
+  if(!cfg.token){ setSyncStatus('拉取失败：请在电脑浏览器里先保存一次配置','error'); return; }
   try{
     const res=await fetch(`https://api.github.com/gists/${cfg.gistId}`,{
       headers:{'Authorization':`Bearer ${cfg.token}`,'Accept':'application/vnd.github+json'}
@@ -1497,7 +1528,7 @@ async function pullFromGist(){
     if(!res.ok) throw new Error(`GitHub API ${res.status}`);
     const data=await res.json();
     const file=data.files['explore-box.json'];
-    if(!file) throw new Error('Gist 里还没有数据，请先从本机推送一次');
+    if(!file) throw new Error('Gist 里还没有数据，请先从电脑推送一次');
     places=JSON.parse(file.content);
     save(); renderCityRow(); renderList();
     setSyncStatus('已从云端同步 ✓ · '+new Date().toLocaleTimeString(),'ok');
